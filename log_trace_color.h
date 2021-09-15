@@ -2,7 +2,10 @@
 #ifndef _LOG_AND_TRACE_COLOR_HEADER
 #define _LOG_AND_TRACE_COLOR_HEADER
 
-#if 1 // LOG ANSI escape Color code enable  
+// LOG ANSI escape Color code enable  
+#define LOG_ANSI_COLOR_ENABLE       (1)
+
+#if defined(LOG_ANSI_COLOR_ENABLE)
   #define LC_RESET          "\x1b[0m"
   #define LC_FG_BLACK       "\x1b[30m"
   #define LC_FG_RED         "\x1b[31m"
@@ -43,6 +46,7 @@
   #define LC_BG_WHITE       " "
   #define LC_BG_RESET       " "
 #endif 
+
 #endif /*  _LOG_AND_TRACE_COLOR_HEADER */
 
 

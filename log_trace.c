@@ -60,6 +60,53 @@ typedef struct STRUCT_LOG_TRACE {
 
 static stLT *lt = NULL;
 
+void ltHexDump(const char *title, void *pack, int size)
+{
+    int   idx = 0;
+
+    char strTmp[4]    = {"\0"};
+    char strAscii[32] = {"\0"};
+    char strDump[64]  = {"\0"};
+    char *dump        = NULL;
+
+    dump = (char *)pack;
+    if ((size > 0) && (pack != NULL)) {
+        fprintf(stdout, " ***** %s %d bytes *****\n", (title == NULL) ? "None" : title, size);
+        fflush(stdout);
+
+        memset(strDump, 0, 64);
+        memset(strAscii, 0, 32);
+
+        for(idx = 0; idx < size; idx++) {
+            if    ((0x1F < dump[idx]) && (dump[idx] < 0x7F) ) { strAscii[idx & 0x0F] = dump[idx]; }
+            else                                              { strAscii[idx & 0x0F] = 0x2E;
+            }
+
+            snprintf(strTmp, 4, "%02X ", (unsigned char)dump[idx]);
+            strcat(strDump, strTmp);
+            if( (idx != 0) && ((idx & 0x03) == 0x03)) { strcat(strDump, " "); }
+
+            if((idx & 0x0F) == 0x0F) {
+                fprintf(stdout, "%12s <0x%04X> %s%s\n", "", (idx & 0xFFF0), strDump, strAscii);
+                fflush(stdout);
+                memset(strDump, 0, 64);
+                memset(strAscii, 0, 32);
+            }
+        }
+
+        if (((size - 1) & 0x0F) != 0x0F) {
+            for(idx = strlen(strDump) ; idx < 52; idx++) {
+                strDump[idx] = 0x20;
+            }
+            fprintf(stdout, "%12s <0x%04X> %s%s\n", "", (size & 0xFFF0), strDump, strAscii);
+            fflush(stdout);
+        }
+
+        fprintf(stdout, "\n");
+        fflush(stdout);
+    }
+}
+
 void *ltHandleCreate(void)
 {
     stLTHandle *hLT = NULL;
@@ -253,11 +300,20 @@ int ltLogLevel(int level)
     return ((level < LT_ERR) || (LT_DEBUG < level)) ? LT_DEBUG : level;
 }
 
-#define LT_DESC_ERR     "ERR"
-#define LT_DESC_WARN    "WARN"
-#define LT_DESC_INFO    "INFO"
-#define LT_DESC_DBG     "DBG"
-#define LT_DESC_UNKNOW  "Unkn"
+
+#if defined(LOG_ANSI_COLOR_ENABLE)
+  #define LT_DESC_DBG     LC_RESET     " DBG"
+  #define LT_DESC_ERR     LC_FG_RED    " ERR"  LC_RESET
+  #define LT_DESC_WARN    LC_FG_YELLOW "WARN" LC_RESET
+  #define LT_DESC_INFO    LC_FG_MGENTA "INFO" LC_RESET
+  #define LT_DESC_UNKNOW  LC_FG_CYAN   "Unkn" LC_RESET
+#else
+  #define LT_DESC_DBG     "DBG"
+  #define LT_DESC_ERR     "ERR"
+  #define LT_DESC_WARN    "WARN"
+  #define LT_DESC_INFO    "INFO"
+  #define LT_DESC_UNKNOW  "Unkn"
+#endif
 
 char *ltLogLevelDesc(int level)
 {
@@ -270,6 +326,7 @@ char *ltLogLevelDesc(int level)
     default       : desc = LT_DESC_UNKNOW; break;
     }
 
+//      ltHexDump(__FUNCTION__, desc, strlen(desc)); 
     return desc;
 }
 
@@ -588,18 +645,18 @@ char *ltMsgInfo(char *str, size_t size, stLTInfo *info)
     time_t tsec = 0;
     struct tm tmLT;
 
-    char lv[ 8]  = {"\0"};
     char tag[12] = {"\0"};
+    char lv[16]  = {"\0"};
 
-    char ltime[32] = {"\0"};
     char lusec[12] = {"\0"};
+    char ltime[32] = {"\0"};
 
     char lline[ 8] = {"\0"};
     char lfile[32] = {"\0"};
 
     if (info) {
         snprintf(tag, 12, "%8s", info->tag);
-        snprintf(lv,   8, "%4s", ltLogLevelDesc(info->cfg.level));
+        snprintf(lv,  16, "%s", ltLogLevelDesc(info->cfg.level));
 
         tsec = info->tSys.sec;
         localtime_r(&tsec, &tmLT);
@@ -612,7 +669,11 @@ char *ltMsgInfo(char *str, size_t size, stLTInfo *info)
     }
 
     if (str && (size > 0)) {
+    #if defined(LOG_ANSI_COLOR_ENABLE)
+        snprintf(str, size, "%8s.%6s|%8s|%s|%15s|%5s", ltime, lusec, tag, lv, lfile, lline);
+    #else
         snprintf(str, size, "%8s.%6s|%8s|%4s|%15s|%5s", ltime, lusec, tag, lv, lfile, lline);
+    #endif
     }
 
     return str;
@@ -827,6 +888,9 @@ void ltSaveLogDump(stLTInfo *info, stLTDump *dump)
     ltMsgAttach(&msg, str);
 
     len = strlen(strInfo) + 2;
+#if defined(LOG_ANSI_COLOR_ENABLE)
+    len = len - (4 + ((info->cfg.level == LT_DEBUG) ? 0 : 5)); 
+#endif
     memset(strInfo, 0, 128);
     for (idx = 0; idx < len; idx++) {
         strInfo[idx] = 0x20; // space ' ';

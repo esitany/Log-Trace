@@ -1,10 +1,11 @@
 
 SRC_DIR = $(shell pwd)
 
-CC    := $(COMPILER_PREFIX)gcc
-CXX   := $(COMPILER_PREFIX)g++
-AR    := $(COMPILER_PREFIX)ar
-STRIP := $(COMPILER_PREFIX)strip
+CC     := $(COMPILER_PREFIX)gcc
+CXX    := $(COMPILER_PREFIX)g++
+AR     := $(COMPILER_PREFIX)ar
+STRIP  := $(COMPILER_PREFIX)strip
+RANLIB := $(COMPILER_PREFIX)ranlib
 
 DESTDIR ?= ./destdir
 
@@ -14,7 +15,7 @@ SOURCES   := log_trace.c
 INCLUDES  := log_trace_color.h \
              log_trace.h
 
-DEFINEDS  :=
+override DEFINES +=
 
 CFLAGS += -Wall \
           -fPIC \
@@ -29,7 +30,12 @@ OBJ_DIR := obj
 OBJ_LIB := -Lobj \
            -llt
 
-INC_DIR := -I$(SRC_DIR)
+override INC_DIR += -I$(SRC_DIR)
+
+ifeq ($(ARCH), x86)
+  CFLAGS  += -m32
+  LDFLAGS += -m32
+endif
 
 OBJ_CFLAGS := $(DEFINDES) \
               $(INC_DIR) \
@@ -38,7 +44,6 @@ OBJ_CFLAGS := $(DEFINDES) \
 
 OBJ_LDFLAGS := $(LDFLAGS) \
                $(LIB_PATH)
-
 
 OBJ_SRC    := $(SOURCES:%.c=$(OBJ_DIR)/%.o)
 
@@ -60,8 +65,9 @@ bin:
 
 lib: $(OBJ_SRC)
 	@echo "Compile...Library"
-	$(CC) -shared -Wl,-soname,$(OBJ_DIR)/$(TARGET).so -o $(OBJ_DIR)/$(TARGET).so $(OBJ_SRC)
+	$(CC) -shared -Wl,-soname,$(OBJ_DIR)/$(TARGET).so -o $(OBJ_DIR)/$(TARGET).so $(OBJ_SRC) $(OBJ_LDFLAGS)
 	$(AR) -r $(OBJ_DIR)/$(TARGET).a $(OBJ_SRC)
+	$(RANLIB) $(OBJ_DIR)/$(TARGET).a
 
 clean:
 	@echo "Clean $(SRC_DIR)/$(OBJ_DIR)..."
