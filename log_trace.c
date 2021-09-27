@@ -326,7 +326,7 @@ char *ltLogLevelDesc(int level)
     default       : desc = LT_DESC_UNKNOW; break;
     }
 
-//      ltHexDump(__FUNCTION__, desc, strlen(desc)); 
+//      ltHexDump(__FUNCTION__, desc, strlen(desc));
     return desc;
 }
 
@@ -679,19 +679,77 @@ char *ltMsgInfo(char *str, size_t size, stLTInfo *info)
     return str;
 }
 
+#define LT_ROTATE_USE_TRUNCATE  (1)
 int ltRotateLogfile(void)
 {
+#if defined( LT_ROTATE_USE_TRUNCATE ) && (LT_ROTATE_USE_TRUNCATE > 0)
+    int ret = 0,
+        fd_new = -1,
+        fd_old = -1,
+        szRead = 0;
+
+    char path[256 + 8] = {"\0"};
+    char buff[LT_READ_SIZE] = {"\0"};
+
+#else
     int ret = 0;
 
     char path[256 + 8] = {"\0"};
+#endif
 
     if (lt) {
         snprintf(path, 256 + 8, "%s.old", lt->path);
+    #if defined( LT_ROTATE_USE_TRUNCATE ) && (LT_ROTATE_USE_TRUNCATE > 0)
+        fd_old = open(lt->path, O_RDWR, (mode_t)00666);
+        if (fd_old == -1) {
+            lErr("open(%s) failed...", lt->path);
+        }
+        else {
+            ret = (int)lseek(fd_old, (off_t)0, SEEK_SET);
+            if (ret == -1) {
+                lErr("lseek(%s, 0, SEEK_SET) failed...", lt->path);
+            }
 
+            fd_new = open(path, O_RDWR | O_CREAT | O_TRUNC, (mode_t)00666);
+            if (fd_new == -1) {
+                lErr("open(%s) failed...", path);
+            }
+            else {
+                ret = (int)lseek(fd_new, (off_t)0, SEEK_SET);
+                if (ret == -1) {
+                    lErr("lseek(%s, 0, SEEK_SET) failed...", path);
+                }
+            }
+        }
+
+        if ((fd_old != -1) && (fd_new != -1)) {
+            while ( (szRead = (int)read(fd_old, buff, LT_READ_SIZE)) > 0) {
+                if (write(fd_new, buff, (size_t)szRead) == -1) {
+                    lErr("write(%s, ...) failed...", path);
+                    break;
+                }
+            }
+        }
+
+        if (fd_new != -1) {
+            fsync(fd_new);
+            close(fd_new);
+        }
+
+        if (fd_old != -1) {
+            if (ftruncate(fd_old, (off_t)0) == -1) {
+                lErr("ftruncate(%s, 0) failed...", lt->path);
+            }
+
+            close(fd_old);
+        }
+
+    #else
         ret = rename(lt->path, path);
         if (ret == -1) {
             lErr("rename(%s, %s) failed...", lt->path, path);
         }
+    #endif
     }
 
     return ret;
@@ -818,7 +876,7 @@ void ltSaveLogMsg(stLTInfo *info, stLTMsg *msg)
         lWrn("Log Message invaild(msg=%p, size=%d)", msg->msg, (int)msg->szMsg);
     }
     else {
-        snprintf(str, LT_MAX_SIZE_MSG, "<%s> %s%s", strInfo, msg->msg, LT_MARK_EOL);
+        snprintf(str, LT_MAX_SIZE_MSG + 128, "<%s> %s%s", strInfo, msg->msg, LT_MARK_EOL);
         ltSaveLogfile(str, strlen(str));
     }
 }
@@ -889,7 +947,7 @@ void ltSaveLogDump(stLTInfo *info, stLTDump *dump)
 
     len = strlen(strInfo) + 2;
 #if defined(LOG_ANSI_COLOR_ENABLE)
-    len = len - (4 + ((info->cfg.level == LT_DEBUG) ? 0 : 5)); 
+    len = len - (4 + ((info->cfg.level == LT_DEBUG) ? 0 : 5));
 #endif
     memset(strInfo, 0, 128);
     for (idx = 0; idx < len; idx++) {

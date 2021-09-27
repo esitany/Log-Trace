@@ -31,6 +31,7 @@ typedef enum ENUM_LT_LEVEL {
 #define LT_MAX_SIZE_MSG   0x0000400 // 1KB, 1024
 //  #define LT_MAX_SIZE_FILE  0x0400000 // 4MB
 #define LT_MAX_SIZE_FILE  0x0800000 // 8MB
+#define LT_READ_SIZE      0x0008000 // 32KB, 32768
 
 #define LT_FILE_LENGTH    16
 
