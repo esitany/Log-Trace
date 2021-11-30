@@ -20,6 +20,7 @@
 
 #include "log_trace.h"
 
+//  #define LT_DBG        (1)
 #define LT_SHOW_LOG   (1)
 
 #if defined(LT_SHOW_LOG) && (LT_SHOW_LOG > 0)
@@ -58,6 +59,9 @@ typedef struct STRUCT_LOG_TRACE {
     stLTHandle *hMsg;      // Log and Trace Message Queue handle
 } stLT;
 
+void ltSaveLogMsg(stLTInfo *info, stLTMsg *msg);
+void ltSaveLogDump(stLTInfo *info, stLTDump *dump);
+
 static stLT *lt = NULL;
 
 void ltHexDump(const char *title, void *pack, int size)
@@ -94,7 +98,7 @@ void ltHexDump(const char *title, void *pack, int size)
             }
         }
 
-        if (((size - 1) & 0x0F) != 0x0F) {
+        if ((size > 0) && (((size - 1) & 0x0F) != 0x0F)) {
             for(idx = strlen(strDump) ; idx < 52; idx++) {
                 strDump[idx] = 0x20;
             }
@@ -297,33 +301,42 @@ int ltLogType(int type)
 
 int ltLogLevel(int level)
 {
-    return ((level < LT_ERR) || (LT_DEBUG < level)) ? LT_DEBUG : level;
+    return ((level < LT_CRITICAL) || (LT_DEBUG < level)) ? LT_DEBUG : level;
 }
 
 
 #if defined(LOG_ANSI_COLOR_ENABLE)
-  #define LT_DESC_DBG     LC_RESET     " DBG"
-  #define LT_DESC_ERR     LC_FG_RED    " ERR"  LC_RESET
-  #define LT_DESC_WARN    LC_FG_YELLOW "WARN" LC_RESET
-  #define LT_DESC_INFO    LC_FG_MGENTA "INFO" LC_RESET
-  #define LT_DESC_UNKNOW  LC_FG_CYAN   "Unkn" LC_RESET
+  #define LT_DESC_UNKNOWN     LC_FG_CYAN   "Unkn" LC_RESET
+  #define LT_DESC_DEBUG       LC_RESET     " Dbg" LC_RESET
+  #define LT_DESC_INFORMATION LC_FG_MGENTA "Info" LC_RESET
+  #define LT_DESC_ERROR       LC_FG_YELLOW " Err" LC_RESET
+  #define LT_DESC_WARNING     LC_FG_YELLOW "Warn" LC_RESET
+  #define LT_DESC_CRITICAL    LC_FG_RED    "Crit" LC_RESET
 #else
-  #define LT_DESC_DBG     "DBG"
-  #define LT_DESC_ERR     "ERR"
-  #define LT_DESC_WARN    "WARN"
-  #define LT_DESC_INFO    "INFO"
-  #define LT_DESC_UNKNOW  "Unkn"
+  #define LT_DESC_UNKNOWN     "Unkn"
+  #define LT_DESC_DEBUG       "Dbg"
+  #define LT_DESC_INFORMATION "Info"
+  #define LT_DESC_ERROR       "Err"
+  #define LT_DESC_WARNING     "Warn"
+  #define LT_DESC_CRITICAL    "Crit"
+//    #define LT_DESC_UNKNOWN     "Unknown"
+//    #define LT_DESC_DEBUG       "Debug"
+//    #define LT_DESC_INFORMATION "Information"
+//    #define LT_DESC_ERROR       "Error"
+//    #define LT_DESC_WARNING     "Warning"
+//    #define LT_DESC_CRITICAL    "Critical"
 #endif
 
 char *ltLogLevelDesc(int level)
 {
     char *desc = NULL;
     switch(level) {
-    case LT_DEBUG : desc = LT_DESC_DBG;    break;
-    case LT_ERR   : desc = LT_DESC_ERR;    break;
-    case LT_WARN  : desc = LT_DESC_WARN;   break;
-    case LT_INFO  : desc = LT_DESC_INFO;   break;
-    default       : desc = LT_DESC_UNKNOW; break;
+    case LT_DEBUG    : desc = LT_DESC_DEBUG;       break;
+    case LT_INFO     : desc = LT_DESC_INFORMATION; break;
+    case LT_WARN     : desc = LT_DESC_WARNING;     break;
+    case LT_ERR      : desc = LT_DESC_ERROR;       break;
+    case LT_CRITICAL : desc = LT_DESC_CRITICAL;    break;
+    default          : desc = LT_DESC_UNKNOWN;     break;
     }
 
 //      ltHexDump(__FUNCTION__, desc, strlen(desc));
@@ -516,7 +529,11 @@ int ltPushMsg(const char *tag, int level, const char *path, int line, const char
             ltUpTime(&ltd->info.tUp);
 
 //              lDbg("ltd=%p, ltd->data=%p(%p), msg=%p(%d)", ltd, ltd->data, ltMsg, ltMsg->msg, (int)ltMsg->szMsg);
+        #if defined(LT_DBG)
+            ltSaveLogMsg(&ltd->info, (stLTMsg *)ltd->data);
+        #else
             ret = ltQuePushTail(lt->hMsg, ltd);
+        #endif
         }
     }
 
@@ -610,7 +627,11 @@ int ltPushDump(const char *tag, int level, const char *path, int line, void *dat
             ltSysTime(&ltd->info.tSys);
             ltUpTime(&ltd->info.tUp);
 
+        #if defined(LT_DBG)
+            ltSaveLogDump(&ltd->info, (stLTDump *)ltd->data);
+        #else
             ret = ltQuePushTail(lt->hMsg, ltd);
+        #endif
         }
     }
 
@@ -974,7 +995,7 @@ void ltSaveLogDump(stLTInfo *info, stLTDump *dump)
         }
     }
 
-    if ((dump->szData > 0) && ((dump->szData & 0x0F) != 0x0F)) {
+    if ((dump->szData > 0) && (((dump->szData - 1) & 0x0F) != 0x0F)) {
         for (idx = strlen(strRaw); idx < 52; idx++) {
             strRaw[idx] = 0x20; // space ' ';
         }

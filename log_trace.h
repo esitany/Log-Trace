@@ -21,10 +21,11 @@ typedef enum ENUM_LT_TYPE {
 } enLTType;
 
 typedef enum ENUM_LT_LEVEL {
-    LT_ERR     = 0,  // Log level Error
-    LT_WARN    ,     // Log Level Warning
-    LT_INFO    ,     // Log Level Information
-    LT_DEBUG         // Log level Debug
+    LT_CRITICAL = 0,  // Log level Critical
+    LT_ERR      ,     // Log level Error
+    LT_WARN     ,     // Log Level Warning
+    LT_INFO     ,     // Log Level Information
+    LT_DEBUG          // Log level Debug
 } enLTLevel;
 
 #define LT_MAX_SIZE_DUMP  0x000FFFF // 64KB, 65535
