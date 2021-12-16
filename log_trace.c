@@ -154,27 +154,15 @@ void *ltHandleCreate(void)
 
 void ltHandleDestroy(stLTHandle *hLT, void (*destroy)(void *))
 {
-    stLTNode *node  = NULL;
+    int val = 0,
+        ret = 0;
 
     if (hLT) {
-        pthread_mutex_lock((pthread_mutex_t *)hLT->mtx);
-        while(hLT->head != NULL) {
-            node = (stLTNode *)hLT->head;
-            hLT->head = (stLTNode *)node->next;
-
-            if (node->value) {
-                if (destroy) {
-                    destroy(node->value);
-                }
-                else {
-                    free(node->value);
-                }
-            }
-
-            free(node);
-        }
-
-        pthread_mutex_unlock((pthread_mutex_t *)hLT->mtx);
+        do {
+            usleep(50000);
+            val = 0;
+            ret = sem_getvalue((sem_t *)hLT->sem, &val);
+        } while ((ret != -1) && (val > 0));
 
         pthread_mutex_destroy((pthread_mutex_t *)hLT->mtx);
         sem_destroy((sem_t *)hLT->sem);
