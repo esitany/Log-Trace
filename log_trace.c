@@ -63,6 +63,7 @@ void ltSaveLogMsg(stLTInfo *info, stLTMsg *msg);
 void ltSaveLogDump(stLTInfo *info, stLTDump *dump);
 
 static stLT *lt = NULL;
+static char bLTColor = 0;
 
 void ltHexDump(const char *title, void *pack, int size)
 {
@@ -295,9 +296,9 @@ int ltLogLevel(int level)
 
 #if defined(LOG_ANSI_COLOR_ENABLE)
   #define LT_DESC_UNKNOWN     LC_FG_CYAN   "Unkn" LC_RESET
-  #define LT_DESC_DEBUG       LC_RESET     " Dbg" LC_RESET
+  #define LT_DESC_DEBUG       LC_RESET     "Dbg " LC_RESET
   #define LT_DESC_INFORMATION LC_FG_MGENTA "Info" LC_RESET
-  #define LT_DESC_ERROR       LC_FG_YELLOW " Err" LC_RESET
+  #define LT_DESC_ERROR       LC_FG_YELLOW "Err " LC_RESET
   #define LT_DESC_WARNING     LC_FG_YELLOW "Warn" LC_RESET
   #define LT_DESC_CRITICAL    LC_FG_RED    "Crit" LC_RESET
 #else
@@ -327,7 +328,6 @@ char *ltLogLevelDesc(int level)
     default          : desc = LT_DESC_UNKNOWN;     break;
     }
 
-//      ltHexDump(__FUNCTION__, desc, strlen(desc));
     return desc;
 }
 
@@ -649,8 +649,9 @@ int ltDump(const char *tag, int level, const char *path, int line, void *data, s
     return ltPushDump(tag, level, path, line, data, size, msg);
 }
 
-char *ltMsgInfo(char *str, size_t size, stLTInfo *info)
+int ltMsgInfo(char *str, size_t size, stLTInfo *info)
 {
+    int ret = 0;
     time_t tsec = 0;
     struct tm tmLT;
 
@@ -678,14 +679,13 @@ char *ltMsgInfo(char *str, size_t size, stLTInfo *info)
     }
 
     if (str && (size > 0)) {
+        ret = snprintf(str, size, "%8s.%6s|%8s|%4s|%15s|%5s", ltime, lusec, tag, lv, lfile, lline);
     #if defined(LOG_ANSI_COLOR_ENABLE)
-        snprintf(str, size, "%8s.%6s|%8s|%s|%15s|%5s", ltime, lusec, tag, lv, lfile, lline);
-    #else
-        snprintf(str, size, "%8s.%6s|%8s|%4s|%15s|%5s", ltime, lusec, tag, lv, lfile, lline);
+        if (bLTColor) { ret = ret - ((info->cfg.level == LT_DEBUG) ? 8 : 9); }
     #endif
     }
 
-    return str;
+    return ret;
 }
 
 #define LT_ROTATE_USE_TRUNCATE  (1)
@@ -942,8 +942,7 @@ void ltSaveLogDump(stLTInfo *info, stLTDump *dump)
 
     char *msg = NULL;
 
-    ltMsgInfo(strInfo, 128, info);
-
+    len = ltMsgInfo(strInfo, 128, info) + 2;
     snprintf(str,
              LT_MAX_SIZE_MSG,
              "<%s> ***** %s %d bytes *****%s",
@@ -954,14 +953,11 @@ void ltSaveLogDump(stLTInfo *info, stLTDump *dump)
 
     ltMsgAttach(&msg, str);
 
-    len = strlen(strInfo) + 2;
-#if defined(LOG_ANSI_COLOR_ENABLE)
-    len = len - (4 + ((info->cfg.level == LT_DEBUG) ? 0 : 5));
-#endif
-    memset(strInfo, 0, 128);
+//      memset(strInfo, 0, 128);
     for (idx = 0; idx < len; idx++) {
         strInfo[idx] = 0x20; // space ' ';
     }
+    strInfo[idx] = 0x00; // add NULL
 
     for (idx = 0; idx < dump->szData; idx++) {
         ch = dump->data[idx];
@@ -1108,12 +1104,19 @@ int ltInitailize(const char *path)
 {
     int ret = 0;
 
+    char *env = NULL;
+
     pthread_t thrd;
 
     if (ltIsRun()) {
         lWrn("Log and Trace is already exist!!!");
 
         ltDestroy();
+    }
+
+    env = (char *)getenv("TERM");
+    if (env) {
+        bLTColor = (strstr(env, "color") != NULL) ? 1 : 0;
     }
 
     ret = ltMakeDir(path);
