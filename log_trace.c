@@ -57,6 +57,8 @@ typedef struct STRUCT_LOG_TRACE {
     stLTCfg     cfg;
     char        path[256]; // Log file path
     stLTHandle *hMsg;      // Log and Trace Message Queue handle
+
+    pthread_mutex_t mtx;
 } stLT;
 
 void ltSaveLogMsg(stLTInfo *info, stLTMsg *msg);
@@ -392,7 +394,7 @@ int ltFileInfo(const char *path, int line, stLTIFile *ltf)
 
     char *bpath = NULL,
          *bname = NULL;
-#if defined(LT_SHOW_LOG) && (LT_SHOW_LOG > 1)
+#if defined(LT_DBG) && (LT_DBG > 1)
     char *dpath = NULL,
          *dname = NULL;
 #endif
@@ -407,12 +409,11 @@ int ltFileInfo(const char *path, int line, stLTIFile *ltf)
 
         bpath  = strdup(path);
         bname  = basename(bpath);
-#if defined(LT_SHOW_LOG) && (LT_SHOW_LOG > 1)
+#if defined(LT_DBG) && (LT_DBG > 1)
         dpath  = strdup(path);
         dname  = dirname(dpath);
 
         lDbg("Dir = %s, base = %s", dname, bname);
-
         free(dpath);
 #endif
         ltf->line = line;
@@ -438,14 +439,29 @@ int ltIsRun(void)
     return ret;
 }
 
+void ltLock(void)
+{
+    if (lt) {
+        pthread_mutex_lock(&lt->mtx);
+    }
+}
+
+void ltUnLock(void)
+{
+    if (lt) {
+        pthread_mutex_unlock(&lt->mtx);
+    }
+}
+
 void ltQueMsgDestroy(void *value)
 {
     stLTMsg  *msg  = NULL;
     stLTDump *dump = NULL;
+    stLTData *ltd  = NULL;
 
-    stLTData *ltd = (stLTData *)value;
+    if (value != NULL) {
+        ltd = (stLTData *)value;
 
-    if (ltd) {
         if (ltd->data) {
             switch(ltd->info.cfg.type) {
             case LT_MSG  :
@@ -516,39 +532,48 @@ int ltPushMsg(const char *tag, int level, const char *path, int line, const char
             ltSysTime(&ltd->info.tSys);
             ltUpTime(&ltd->info.tUp);
 
-//              lDbg("ltd=%p, ltd->data=%p(%p), msg=%p(%d)", ltd, ltd->data, ltMsg, ltMsg->msg, (int)ltMsg->szMsg);
-        #if defined(LT_DBG)
-            ltSaveLogMsg(&ltd->info, (stLTMsg *)ltd->data);
-        #else
             ret = ltQuePushTail(lt->hMsg, ltd);
-        #endif
+        }
+
+        if (ret < 0) {
+            ltQueMsgDestroy(ltd);
         }
     }
 
-    if (ret < 0) {
-        ltQueMsgDestroy(ltd);
-    }
 
     return ret;
 }
 
 int ltMsg(const char *tag, int level, const char *path, int line, const char *fmt, ...)
 {
+    int ret = 0;
+
     va_list ap;
 
     char err[128] = {"\0"};
     char msg[LT_MAX_SIZE_MSG] = {"\0"};
 
-    va_start(ap, fmt);
-    vsnprintf(msg, LT_MAX_SIZE_MSG, fmt, ap);
-    va_end(ap);
+    if (ltIsRun()) {
+        ltLock();
 
-    if (level == LT_ERR) {
-        snprintf(err, 128, "[errno=%d(%s)]", errno, strerror(errno));
-        strcat(msg, err);
+        va_start(ap, fmt);
+        vsnprintf(msg, LT_MAX_SIZE_MSG - 128, fmt, ap);
+        va_end(ap);
+
+        if (level == LT_ERR) {
+            snprintf(err, 128, "[errno=%d(%s)]", errno, strerror(errno));
+            strcat(msg, err);
+        }
+
+    #if defined(LT_DBG)
+        lDbg("MSG(%s[%d] >> %s)", path, line, msg);
+    #endif
+        ret = ltPushMsg(tag, level, path, line, msg);
+
+        ltUnLock();
     }
 
-    return ltPushMsg(tag, level, path, line, msg);
+    return ret;
 }
 
 int ltPushDump(const char *tag, int level, const char *path, int line, void *data, size_t size, const char *title)
@@ -615,38 +640,47 @@ int ltPushDump(const char *tag, int level, const char *path, int line, void *dat
             ltSysTime(&ltd->info.tSys);
             ltUpTime(&ltd->info.tUp);
 
-        #if defined(LT_DBG)
-            ltSaveLogDump(&ltd->info, (stLTDump *)ltd->data);
-        #else
-            ret = ltQuePushTail(lt->hMsg, ltd);
-        #endif
+           ret = ltQuePushTail(lt->hMsg, ltd);
+        }
+
+        if (ret < 0) {
+            ltQueMsgDestroy(ltd);
         }
     }
 
-    if (ret < 0) {
-        ltQueMsgDestroy(ltd);
-    }
 
     return ret;
 }
 
 int ltDump(const char *tag, int level, const char *path, int line, void *data, size_t size, const char *fmt, ...)
 {
+    int ret = 0;
+
     va_list ap;
 
     char err[128] = {"\0"};
     char msg[LT_MAX_SIZE_MSG] = {"\0"};
 
-    va_start(ap, fmt);
-    vsnprintf(msg, LT_MAX_SIZE_MSG, fmt, ap);
-    va_end(ap);
+    if (ltIsRun()) {
+        ltLock();
 
-    if (level == LT_ERR) {
-        snprintf(err, 128, "[%s(%d)]", strerror(errno), errno);
-        strcat(msg, err);
+        va_start(ap, fmt);
+        vsnprintf(msg, LT_MAX_SIZE_MSG, fmt, ap);
+        va_end(ap);
+
+        if (level == LT_ERR) {
+            snprintf(err, 128, "[%s(%d)]", strerror(errno), errno);
+            strcat(msg, err);
+        }
+
+    #if defined(LT_DBG)
+        lDbg("Dump(%s[%d] >> %s)", path, line, msg);
+    #endif
+        ret = ltPushDump(tag, level, path, line, data, size, msg);
+        ltUnLock();
     }
 
-    return ltPushDump(tag, level, path, line, data, size, msg);
+    return ret;
 }
 
 int ltMsgInfo(char *str, size_t size, stLTInfo *info)
@@ -1038,6 +1072,8 @@ static void *thrdLTMsgQue(void *arg)
         }
     }
 
+    ltCloseLogfile();
+
     pthread_exit((void *)0);
 }
 
@@ -1047,12 +1083,11 @@ void ltDestroy(void)
         lt->cfg.bRun = 0;
         usleep(300000);
 
-        if (lt->fd != -1) {
+        while (ltQueSize(lt->hMsg) > 0) {
             usleep(100000);
-
-            ltCloseLogfile();
         }
 
+        pthread_mutex_destroy(&lt->mtx);
         ltHandleDestroy(lt->hMsg, ltQueMsgDestroy);
 
         free(lt);
@@ -1127,15 +1162,27 @@ int ltInitailize(const char *path)
             ret = -EFAULT;
         }
         else {
-            lt->fd = -1;
+            memset(lt, 0, sizeof(stLT));
+            lt->hMsg = NULL;
+            lt->fd   = -1;
+
             lt->cfg.bRun = 1;
             snprintf(lt->path, 256, "%s", path);
 
-            lt->hMsg =(stLTHandle *)ltHandleCreate();
-            if (lt->hMsg == NULL) {
-                lWrn("ltHandleCreate() failed!!!");
+            ret = pthread_mutex_init(&lt->mtx, NULL);
+            if ( ret != 0) {
+                lErr("pthread_mutex_init() failed...");
                 ret = -EFAULT;
+            }
+            else {
+                lt->hMsg =(stLTHandle *)ltHandleCreate();
+                if (lt->hMsg == NULL) {
+                    lWrn("ltHandleCreate() failed!!!");
+                    ret = -EFAULT;
+                }
+            }
 
+            if (ret != 0) {
                 ltDestroy();
             }
         }
