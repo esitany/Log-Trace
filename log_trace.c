@@ -21,7 +21,7 @@
 #include "log_trace.h"
 
 //  #define LT_DBG        (1)
-#define LT_SHOW_LOG   (1)
+//  #define LT_SHOW_LOG   (1)
 
 #if defined(LT_SHOW_LOG) && (LT_SHOW_LOG > 0)
   #define lDbg(fmt, ...) { \
@@ -562,7 +562,9 @@ int ltMsg(const char *tag, int level, const char *path, int line, const char *fm
 
         if (level == LT_ERR) {
             snprintf(err, 128, "[errno=%d(%s)]", errno, strerror(errno));
-            strcat(msg, err);
+            if ((strlen(err) + strlen(msg)) < LT_MAX_SIZE_MSG) {
+                strcat(msg, err);
+            }
         }
 
     #if defined(LT_DBG)
